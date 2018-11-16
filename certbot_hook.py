@@ -4,6 +4,7 @@ import os
 import time
 import boto3
 from pprint import pprint
+import re
 
 class ZoneIDNotFoundError(RuntimeError):
     pass
@@ -20,7 +21,7 @@ def get_zone_id(client=None, zone_name=None):
         for z in hosted_zones:
             z_name = z['Name']
             id_ = z['Id']
-            if zone_name in z_name:
+            if zone_name == re.sub("\.$", "", z_name):
                 return id_
         else:
             raise ZoneIDNotFoundError('Could not identify hosted zone ID for zone {}'.format(zone_name))
@@ -52,11 +53,16 @@ def main():
               'HostedZoneId': zone_id}
 
     response = client.change_resource_record_sets(**kwargs)
-    pprint(response)
+    change_id = response["ChangeInfo"]["Id"]
+    status = response["ChangeInfo"]["Status"]
     if action == 'CREATE':
-        print('\nWaiting 15 seconds to ensure record creation is processed.\n')
-        time.sleep(15)
-
+        if status == "PENDING":
+            while True:
+                response = client.get_change(Id=change_id)
+                #print(response["ChangeInfo"]["Status"])
+                if response["ChangeInfo"]["Status"] == "INSYNC":
+                    return
+                time.sleep(5)
 
 if __name__ == '__main__':
     main()
